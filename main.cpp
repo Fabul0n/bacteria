@@ -60,9 +60,17 @@ public:
     {
         this->weight = weight;
     }
+    int get_speed()
+    {
+        return this->speed;
+    }
     void starve()
     {
         this->weight -= (int) exp(1.0*log10(weight));
+    }
+    void eat()
+    {
+        this->weight += 100;
     }
     
     
@@ -98,6 +106,7 @@ public:
     void set_bacterium(Bacteria bacterium)
     {
         this->bacterium = bacterium;
+        this->type = 1;
     }
 
     void set_food()
@@ -295,36 +304,67 @@ public:
     void make_step()
     {
         vector< pair< int,int > > died;
+        vector< pair< pair< int,int >, Bacteria > > new_bacteria;
         for (set< pair< int,int > >::iterator it = bacteria.begin(); it != bacteria.end(); it++)
         {
             Bacteria bacterium = field[(*it).first][(*it).second].get_bacterium();
             bacterium.starve();
             int rnd = rand()%4;
+            pair< int,int > prr = (*it);
             switch (rnd)
             {
             case 0:
-                (*it).first;
+                prr.first = min(n-1, prr.first+1*bacterium.get_speed());
                 break;
             case 1:
+                prr.first = max(0, prr.first-1*bacterium.get_speed());
                 break;
             case 2:
+                prr.second = min(m-1, prr.second+1*bacterium.get_speed());
                 break;
+            case 3:
+                prr.second = max(0, prr.second-1*bacterium.get_speed());
             default:
                 break;
             }
+            died.push_back(pair< int,int >((*it).first,(*it).second));
+            field[(*it).first][(*it).second].set_empty();
             if (bacterium.is_alive())
             {   
-                field[(*it).first][(*it).second].set_bacterium(bacterium);
-            }
-            else
-            {
-                field[(*it).first][(*it).second].set_empty();
-                died.push_back(pair< int,int >((*it).first,(*it).second));
+                new_bacteria.push_back(pair< pair< int,int >, Bacteria>(prr, bacterium));
             }
         }
+        bacteria_count = 0;
         for (pair< int,int > pr : died)
         {
             bacteria.erase(pr);
+        }
+        for (pair< pair< int,int >, Bacteria> pr : new_bacteria)
+        {
+            if (field[pr.first.first][pr.first.second].get_unit_type() == 1)
+            {
+                Bacteria other_bacterium = field[pr.first.first][pr.first.second].get_bacterium();
+                if (other_bacterium.get_weight() > pr.second.get_weight())
+                {
+                    continue;
+                }
+                bacteria.insert(pr.first);
+                field[pr.first.first][pr.first.second].set_bacterium(pr.second);
+            }
+            else if (field[pr.first.first][pr.first.second].get_unit_type() == -1)
+            {
+                pr.second.eat();
+                field[pr.first.first][pr.first.second].set_bacterium(pr.second);
+                food.erase(pr.first);
+                food_count -= 1;
+                bacteria.insert(pr.first);
+            }
+            else
+            {
+                bacteria.insert(pr.first);
+                field[pr.first.first][pr.first.second].set_bacterium(pr.second);
+                bacteria_count += 1;
+            }
         }
     }
 
@@ -349,7 +389,7 @@ int main()
     srand(time(0));
     Field fld(10, 10);
     Unit empty;
-    fld.add_food(5);
+    //fld.add_food(5);
     fld.add_bacteria(5);
     fld.print_field();
     char action;
