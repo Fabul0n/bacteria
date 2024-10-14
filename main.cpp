@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <thread>
+#include <mutex>
 #include <set>
 
 #define EMPTY 0
@@ -186,9 +187,47 @@ class Field
     set< pair< int, int> > bacteria;
     vector< vector< Unit > > field;
 
+    inline static mutex mtx;
+
     void init_field(int n, int m)
     {
         field = vector< vector< Unit > >(n, vector< Unit >(m));
+    }
+
+    static void process_step(vector< vector< Unit > > &field, set< pair< int,int > >::iterator bgn, set< pair< int,int > >::iterator nd, vector< pair< int,int > > &died, vector< pair< pair< int,int >, Bacteria > > &new_bacteria)
+    {
+        for (set< pair< int,int > >::iterator it = bgn; it != nd; it++)
+        {
+            Bacteria bacterium = field[(*it).first][(*it).second].get_bacterium();
+            bacterium.starve();
+            int rnd = rand()%4;
+            pair< int,int > prr = (*it);
+            switch (rnd)
+            {
+            case 0:
+                prr.first = min(int(field.size()-1), prr.first+1*bacterium.get_speed());
+                break;
+            case 1:
+                prr.first = max(0, prr.first-1*bacterium.get_speed());
+                break;
+            case 2:
+                prr.second = min(int(field[0].size()-1), prr.second+1*bacterium.get_speed());
+                break;
+            case 3:
+                prr.second = max(0, prr.second-1*bacterium.get_speed());
+            default:
+                break;
+            }
+            Field::mtx.lock();
+                died.push_back(pair< int,int >((*it).first,(*it).second));
+                field[(*it).first][(*it).second].set_empty();
+                if (bacterium.is_alive())
+                {   
+                    new_bacteria.push_back(pair< pair< int,int >, Bacteria>(prr, bacterium));
+                }
+            Field::mtx.unlock();
+        }
+        return;
     }
 public:
     Field()
@@ -296,45 +335,20 @@ public:
         }
     }
 
-    double dist(int x1, int y1, int x2, int y2)
-    {
-        return sqrt(pow(x2-x1, 2) + pow(y2-y1, 2));
-    }
-
     void make_step()
     {
         vector< pair< int,int > > died;
         vector< pair< pair< int,int >, Bacteria > > new_bacteria;
-        for (set< pair< int,int > >::iterator it = bacteria.begin(); it != bacteria.end(); it++)
-        {
-            Bacteria bacterium = field[(*it).first][(*it).second].get_bacterium();
-            bacterium.starve();
-            int rnd = rand()%4;
-            pair< int,int > prr = (*it);
-            switch (rnd)
-            {
-            case 0:
-                prr.first = min(n-1, prr.first+1*bacterium.get_speed());
-                break;
-            case 1:
-                prr.first = max(0, prr.first-1*bacterium.get_speed());
-                break;
-            case 2:
-                prr.second = min(m-1, prr.second+1*bacterium.get_speed());
-                break;
-            case 3:
-                prr.second = max(0, prr.second-1*bacterium.get_speed());
-            default:
-                break;
-            }
-            died.push_back(pair< int,int >((*it).first,(*it).second));
-            field[(*it).first][(*it).second].set_empty();
-            if (bacterium.is_alive())
-            {   
-                new_bacteria.push_back(pair< pair< int,int >, Bacteria>(prr, bacterium));
-            }
-        }
+        set< pair< int,int > >::iterator half1_begin = bacteria.begin();
+        set< pair< int,int > >::iterator half1_end = half1_begin;
+        advance(half1_end, bacteria.size()/2);
+        set< pair< int,int > >::iterator half2_begin = half1_end;
+        set< pair< int,int > >::iterator half2_end = bacteria.end();
+        thread thr1(process_step, ref(field), half1_begin, half1_end, ref(died), ref(new_bacteria));
+        thread thr2(process_step, ref(field), half2_begin, half2_end, ref(died), ref(new_bacteria));
         bacteria_count = 0;
+        thr1.join();
+        thr2.join();
         for (pair< int,int > pr : died)
         {
             bacteria.erase(pr);
@@ -382,8 +396,6 @@ public:
     }
 };
 
-
-
 int main()
 {
     srand(time(0));
@@ -392,8 +404,8 @@ int main()
     //fld.add_food(5);
     fld.add_bacteria(5);
     fld.print_field();
-    char action;
-    while(action = getchar())
+    char action = getchar();
+    while(action)
     {
         if (action == '1')
         {
@@ -405,6 +417,7 @@ int main()
             fld.print_field();
 
         }
+        action = getchar();
     }
     return 0;
 }
