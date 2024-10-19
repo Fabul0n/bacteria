@@ -7,12 +7,17 @@
 #include <thread>
 #include <mutex>
 #include <set>
+#include <condition_variable>
 
 #define EMPTY 0
 #define BACTERIUM 1
 #define FOOD 2
 
 using namespace std;
+
+mutex mtxx;
+condition_variable cv;
+bool activated = false;
 
 class Bacteria
 {
@@ -380,6 +385,11 @@ public:
                 bacteria_count += 1;
             }
         }
+        {
+            lock_guard<mutex> lg(mtxx);
+            activated = true;
+            cv.notify_one();
+        }
     }
 
     void print_field(int width=4)
@@ -396,6 +406,18 @@ public:
     }
 };
 
+void print_fld(Field &fld)
+{
+    while (1)
+    {
+        unique_lock<mutex> ul(mtxx);
+        cv.wait(ul, []{return activated;});
+        fld.print_field();
+        activated = false;
+        ul.unlock();
+    }
+}
+
 int main()
 {
     srand(time(0));
@@ -404,6 +426,8 @@ int main()
     //fld.add_food(5);
     fld.add_bacteria(5);
     fld.print_field();
+    thread tr(print_fld, ref(fld));
+    tr.detach();
     char action = getchar();
     while(action)
     {
@@ -414,8 +438,6 @@ int main()
         else
         {
             fld.make_step();
-            fld.print_field();
-
         }
         action = getchar();
     }
